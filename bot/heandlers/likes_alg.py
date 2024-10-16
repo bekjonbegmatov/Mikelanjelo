@@ -19,6 +19,40 @@ async def get_redis_pool():
 
 redis = None
 
+# Отправка любовного письма
+@router.message(F.text, User_Like_Message.user_id_to)
+async def send_love_message(message: Message, state: FSMContext, bot: Bot):
+    global redis #! I don't shure about it 
+    if redis is None:
+        redis = await get_redis_pool()
+        
+    letter_user_id = await redis.get(f'loveleter_{message.from_user.id}')
+    if message.text:
+        if letter_user_id:
+            await bot.send_message(
+                chat_id=int(letter_user_id),
+                text='Пользователь отправил вам сообщение',
+                reply_markup=get_message_button(sender_id=message.from_user.id, message=message.text)
+            )
+            await message.answer(
+                text="Ваше сообщение успешно отправлен"
+            )
+            await state.clear()
+            
+            with UserDatabase() as db, LikesDatabase() as likes_db:
+                recommender = RecommendationSystem(db, likes_db)
+                recommendations = recommender.get_recommendations(message.from_user.id)
+                if recommendations:
+                    user = recommendations[0]
+                    await bot.send_photo(
+                        chat_id=message.from_user.id,
+                        photo=user[6],
+                        caption=f'''<b>{user[3]}</b>, {user[10]} - {user[7]}''',
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=main_menu_button()
+                    )
+                await redis.set(message.from_user.id, user[1])
+
 @router.message(F.text)
 async def get_user_for_like(message: Message, bot: Bot, state: FSMContext):
     global redis
@@ -51,13 +85,16 @@ async def get_user_for_like(message: Message, bot: Bot, state: FSMContext):
                         )
                         await redis.set(message.from_user.id, user[1])  # Обновление кеша
     elif message.text == '💌':
-        # if love_user_id:
-        with LikesDatabase() as like_db:
-            await message.answer('Напишите ваше сообщение')
-            like_db.add_like(message.from_user.id, love_user_id)
-            await state.set_state(User_Like_Message.user_id_to)
-            await state.update_data(user_id_to=love_user_id)
-            await state.set_state(User_Like_Message.test)
+        if love_user_id:
+            with LikesDatabase() as like_db:
+                await message.answer('Напишите ваше сообщение')
+                like_db.add_like(message.from_user.id, love_user_id)
+                
+                await redis.set(key=f"loveleter_{message.from_user.id}",
+                                value=love_user_id)
+                
+                #? Bilmiman logikani almashtirayabman 
+                await state.set_state(User_Like_Message.user_id_to)
 
     elif message.text == 'Начать поиск !':
         with UserDatabase() as db, LikesDatabase() as likes_db:
@@ -74,37 +111,7 @@ async def get_user_for_like(message: Message, bot: Bot, state: FSMContext):
                 )
                 await redis.set(message.from_user.id, user[1])
 
-# Отправка любовного письма
-@router.message(User_Like_Message.test)
-async def send_love_message(message: Message, state: FSMContext, bot: Bot):
-    if message.text:
-        data = await state.get_data()
-        
-        await bot.send_message(
-            chat_id=int(data['user_id_to']),
-            text='Пользователь отправил вам сообщение',
-            reply_markup=get_message_button()
-        )
-        await message.answer(
-            text="Ваше сообщение успешно отправлен"
-        )
-        await state.clear()
-        
-        with UserDatabase() as db, LikesDatabase() as likes_db:
-            recommender = RecommendationSystem(db, likes_db)
-            recommendations = recommender.get_recommendations(message.from_user.id)
-            if recommendations:
-                user = recommendations[0]
-                await bot.send_photo(
-                    chat_id=message.from_user.id,
-                    photo=user[6],
-                    caption=f'''<b>{user[3]}</b>, {user[10]} - {user[7]}''',
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=main_menu_button()
-                )
-                await redis.set(message.from_user.id, user[1])
-    
-
+#* This is callback quvery for get_message !
 @router.callback_query(F.data.startswith('letter_'))
 async def get_love_letter(call: CallbackQuery, bot: Bot):
     global redis
