@@ -60,7 +60,7 @@ async def get_user_for_like(message: Message, bot: Bot, state: FSMContext):
         redis = await get_redis_pool()
 
     love_user_id = await redis.get(message.from_user.id)
-    if message.text in ['♥️', '👎']:
+    if message.text == "♥️":#in ['♥️', '👎']:
         if love_user_id:
             with LikesDatabase() as like_db:
                 # Добавление записей
@@ -94,9 +94,9 @@ async def get_user_for_like(message: Message, bot: Bot, state: FSMContext):
                                 value=love_user_id)
                 
                 #? Bilmiman logikani almashtirayabman 
-                await state.set_state(User_Like_Message.user_id_to)
+                await state.set_state(User_Like_Message.user_id_to)        
 
-    elif message.text == 'Начать поиск !':
+    elif message.text in ["👎", 'Начать поиск !']:
         with UserDatabase() as db, LikesDatabase() as likes_db:
             recommender = RecommendationSystem(db, likes_db)
             recommendations = recommender.get_recommendations(message.from_user.id)
@@ -128,9 +128,9 @@ async def get_love_letter(call: CallbackQuery, bot: Bot):
             await bot.send_photo(
                 chat_id=call.message.chat.id,
                 photo=user[6],
-                caption=f'''<b>{user[3]}</b>, {user[10]} - {user[7]}
+                caption=f'''<b><a href="tg://user?id={user[1]}">{user[3]}</a></b>, {user[10]} - {user[7]}
 
-<b>Сообщение</b>
+<b>Сообщение 💌</b>
 {message}
 ''',
                 parse_mode=ParseMode.HTML,
